@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gallery</title>
+<style>
+  :root {
+    --bg: #101010;
+    --ink: #f2f2f0;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+
+  .stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1600px;
+  }
+
+  .track {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+  }
+
+  .card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(46vw, 62vh);
+    height: min(62vh, 46vw);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+    transition: transform 0.55s cubic-bezier(.2,.8,.25,1), opacity 0.55s ease, filter 0.55s ease;
+    cursor: pointer;
+    background: #1a1a1a;
+  }
+
+  .card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+  }
+
+  .card.center {
+    cursor: default;
+  }
+
+  /* icon buttons */
+  .icon-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 20;
+    transition: background 0.2s ease, opacity 0.2s ease;
+    opacity: 0.55;
+  }
+
+  .icon-btn:hover {
+    background: rgba(255,255,255,0.16);
+    opacity: 1;
+  }
+
+  .icon-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--ink);
+    fill: none;
+  }
+
+  #prevBtn { left: clamp(10px, 3vw, 40px); }
+  #nextBtn { right: clamp(10px, 3vw, 40px); }
+
+  #fsView {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #fsView.open {
+    display: flex;
+  }
+
+  #fsView {
+    z-index: 450;
+  }
+
+  #fsView img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  #fsView:fullscreen,
+  #fsView:-webkit-full-screen {
+    width: 100vw;
+    height: 100vh;
+  }
+
+  #flightImg {
+    position: fixed;
+    object-fit: cover;
+    z-index: 450;
+    box-shadow: 0 30px 70px rgba(0,0,0,0.55);
+    pointer-events: none;
+  }
+
+  #flightBackdrop {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    transition: opacity 6s ease;
+    z-index: 449;
+    pointer-events: none;
+  }
+
+  /* floating hearts */
+  #heartsLayer {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 500;
+  }
+
+  .floating-heart {
+    position: absolute;
+    bottom: -12vh;
+    pointer-events: none;
+    will-change: transform, opacity;
+    animation-name: floatUp;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));
+  }
+
+  .floating-heart img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  @keyframes floatUp {
+    0% {
+      transform: translate(0, 0) rotate(var(--rot-start)) scale(var(--scale));
+      opacity: 0;
+    }
+    8% {
+      opacity: var(--max-opacity);
+    }
+    50% {
+      transform: translate(var(--sway), -55vh) rotate(var(--rot-mid)) scale(var(--scale));
+    }
+    88% {
+      opacity: var(--max-opacity);
+    }
+    100% {
+      transform: translate(calc(var(--sway) * -1), -115vh) rotate(var(--rot-end)) scale(var(--scale));
+      opacity: 0;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="track" id="track"></div>
+  <button class="icon-btn" id="prevBtn" aria-label="Previous">
+    <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <button class="icon-btn" id="nextBtn" aria-label="Next">
+    <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+  </button>
+</div>
+
+<div id="fsView">
+  <img id="fsImg" src="" alt="">
+</div>
+
+<div id="heartsLayer"></div>
+
+<script>
+  const images = [
+    "IMG_4944.jpeg",
+    "IMG_4951.jpeg",
+    "IMG_4952-Enhanced-NR.jpeg",
+    "IMG_4998.jpeg",
+    "IMG_5029.jpeg",
+    "IMG_5070.jpeg",
+    "IMG_5076.jpeg",
+    "IMG_5079.jpeg",
+    "IMG_5086.jpeg",
+    "IMG_5117.jpeg",
+    "IMG_5131.jpeg",
+    "P6454846_01.jpeg",
+    "P6454852.jpeg",
+    "P6454880.jpeg",
+    "P6454954.jpeg",
+    "P6454958.jpeg",
+    "P6454990.jpeg",
+    "P6455003.jpeg",
+    "P6455124.jpeg"
+  ];
+
+  const track = document.getElementById('track');
+  const startImage = "P6454846_01.jpeg";
+  const startIndex = images.indexOf(startImage);
+  let current = startIndex !== -1 ? startIndex : 0;
+  const SPREAD = 5; // how many cards visible on each side
+
+  const cards = images.map((src, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = '';
+    img.loading = 'lazy';
+    card.appendChild(img);
+    card.addEventListener('click', () => {
+      if (i !== current) goTo(i);
+      else flyToFullscreen(card, i);
+    });
+    track.appendChild(card);
+    return card;
+  });
+
+  function layout() {
+    cards.forEach((card, i) => {
+      let offset = i - current;
+      if (offset > images.length / 2) offset -= images.length;
+      if (offset < -images.length / 2) offset += images.length;
+
+      const abs = Math.abs(offset);
+      if (abs > SPREAD) {
+        card.style.opacity = '0';
+        card.style.pointerEvents = 'none';
+        card.style.transform = `translate(-50%, -50%) translateX(${offset > 0 ? 100 : -100}vw) scale(0.5)`;
+        return;
+      }
+
+      card.style.pointerEvents = 'auto';
+      card.classList.toggle('center', offset === 0);
+
+      const tx = offset * 46;
+      const rot = offset === 0 ? 0 : (offset > 0 ? -32 : 32);
+      const tz = -abs * 160;
+      const scale = offset === 0 ? 1 : 0.72;
+      const opacity = 1 - abs * 0.18;
+
+      card.style.zIndex = 100 - abs;
+      card.style.opacity = Math.max(opacity, 0.15);
+      card.style.transform =
+        `translate(-50%, -50%) translateX(${tx}%) translateZ(${tz}px) rotateY(${rot}deg) scale(${scale})`;
+      card.style.filter = offset === 0 ? 'none' : `brightness(0.55)`;
+    });
+  }
+
+  function goTo(i) {
+    current = ((i % images.length) + images.length) % images.length;
+    layout();
+  }
+
+  document.getElementById('prevBtn').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('nextBtn').addEventListener('click', () => goTo(current + 1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeFullscreen(); return; }
+    if (e.key === 'ArrowLeft') { goTo(current - 1); if (fsView.classList.contains('open')) fsImg.src = images[current]; }
+    if (e.key === 'ArrowRight') { goTo(current + 1); if (fsView.classList.contains('open')) fsImg.src = images[current]; }
+    if (e.key === 'f' || e.key === 'F') flyToFullscreen(cards[current], current);
+  });
+
+  let touchStartX = null;
+  document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', (e) => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (dx > 50) goTo(current - 1);
+    else if (dx < -50) goTo(current + 1);
+    touchStartX = null;
+  });
+
+  let wheelLock = false;
+  document.addEventListener('wheel', (e) => {
+    if (wheelLock) return;
+    wheelLock = true;
+    if (e.deltaY > 0 || e.deltaX > 0) goTo(current + 1);
+    else goTo(current - 1);
+    setTimeout(() => wheelLock = false, 400);
+  }, { passive: true });
+
+  const fsView = document.getElementById('fsView');
+  const fsImg = document.getElementById('fsImg');
+
+  function openFullscreen() {
+    fsImg.src = images[current];
+    fsView.classList.add('open');
+    // move the hearts layer inside the fullscreen element so browsers keep
+    // rendering it once native Fullscreen mode takes over the whole page
+    if (heartsLayer && heartsLayer.parentElement !== fsView) fsView.appendChild(heartsLayer);
+    const req = fsView.requestFullscreen || fsView.webkitRequestFullscreen || fsView.msRequestFullscreen;
+    if (req) req.call(fsView);
+  }
+
+  function closeFullscreen() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen).call(document);
+    } else {
+      fsView.classList.remove('open');
+      if (heartsLayer && heartsLayer.parentElement !== document.body) document.body.appendChild(heartsLayer);
+    }
+  }
+
+  // seamlessly grow the clicked card into fullscreen over ~6 seconds, then
+  // hand off to the real fullscreen view once the flight lands
+  function flyToFullscreen(cardEl, index) {
+    const rect = cardEl.getBoundingClientRect();
+    const sourceImg = cardEl.querySelector('img');
+    if (!sourceImg) return;
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'flightBackdrop';
+    document.body.appendChild(backdrop);
+
+    const flight = document.createElement('img');
+    flight.id = 'flightImg';
+    flight.src = sourceImg.src;
+    flight.style.top = `${rect.top}px`;
+    flight.style.left = `${rect.left}px`;
+    flight.style.width = `${rect.width}px`;
+    flight.style.height = `${rect.height}px`;
+    flight.style.borderRadius = '6px';
+    flight.style.transition =
+      'top 6s cubic-bezier(.4,0,.2,1), left 6s cubic-bezier(.4,0,.2,1), width 6s cubic-bezier(.4,0,.2,1), height 6s cubic-bezier(.4,0,.2,1), border-radius 6s ease';
+    document.body.appendChild(flight);
+
+    // hide the original card so it doesn't show through underneath mid-flight
+    cardEl.style.visibility = 'hidden';
+
+    // land on the SAME box that fsView will show (object-fit: contain,
+    // full image visible, letterboxed and centered) so the handoff to real
+    // fullscreen is invisible instead of snapping from a cropped fill to a
+    // smaller "actual size" image
+    function startFlight() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const naturalW = flight.naturalWidth || rect.width;
+      const naturalH = flight.naturalHeight || rect.height;
+      const scale = Math.min(vw / naturalW, vh / naturalH);
+      const targetW = naturalW * scale;
+      const targetH = naturalH * scale;
+      const targetTop = (vh - targetH) / 2;
+      const targetLeft = (vw - targetW) / 2;
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          backdrop.style.opacity = '1';
+          flight.style.top = `${targetTop}px`;
+          flight.style.left = `${targetLeft}px`;
+          flight.style.width = `${targetW}px`;
+          flight.style.height = `${targetH}px`;
+          flight.style.borderRadius = '0px';
+        });
+      });
+    }
+
+    if (flight.complete && flight.naturalWidth) {
+      startFlight();
+    } else {
+      flight.addEventListener('load', startFlight, { once: true });
+    }
+
+    let landed = false;
+    const land = () => {
+      if (landed) return;
+      landed = true;
+      flight.removeEventListener('transitionend', onEnd);
+      flight.remove();
+      backdrop.remove();
+      cardEl.style.visibility = '';
+      openFullscreen();
+    };
+    function onEnd(e) {
+      if (e.propertyName === 'width' || e.propertyName === 'height') land();
+    }
+    flight.addEventListener('transitionend', onEnd);
+    // safety net in case transitionend never fires (tab backgrounded, etc.)
+    setTimeout(land, 6300);
+  }
+
+  fsView.addEventListener('click', closeFullscreen);
+
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+      fsView.classList.remove('open');
+      if (heartsLayer && heartsLayer.parentElement !== document.body) document.body.appendChild(heartsLayer);
+    }
+  });
+  document.addEventListener('webkitfullscreenchange', () => {
+    if (!document.webkitFullscreenElement) {
+      fsView.classList.remove('open');
+      if (heartsLayer && heartsLayer.parentElement !== document.body) document.body.appendChild(heartsLayer);
+    }
+  });
+
+  layout();
+
+  // ---- floating hearts ----
+  // Drop your heart images into the repo alongside index.html and list them here.
+  // Feel free to add/remove filenames any time — one is picked at random for each heart.
+  const heartImages = [
+    "Love.jpeg",
+    "Blue.png",
+    "DANCE.png",
+    "Green.png",
+    "Heart.png",
+    "LOVE.png",
+    "Lovely_Heart.png",
+    "Lovely.png",
+    "LOVER.png",
+    "Loves.png",
+    "Orange.png",
+    "Purple.png",
+    "Red.png",
+    "Yellow.png"
+  ];
+
+  const heartsLayer = document.getElementById('heartsLayer');
+
+  function rand(min, max) {
+    return Math.random() * (max - min) + min;
+  }
+
+  function spawnHeart() {
+    const src = heartImages[Math.floor(Math.random() * heartImages.length)];
+
+    const heart = document.createElement('div');
+    heart.className = 'floating-heart';
+
+    const size = rand(28, 90); // px
+    const left = rand(0, 100); // vw
+    const duration = rand(7, 15); // seconds
+    const sway = rand(20, 120) * (Math.random() < 0.5 ? -1 : 1); // px drift
+    const rotStart = `${rand(-15, 15)}deg`;
+    const rotMid = `${rand(-25, 25)}deg`;
+    const rotEnd = `${rand(-15, 15)}deg`;
+    const maxOpacity = rand(0.55, 0.95);
+    const scale = rand(0.8, 1.3);
+
+    heart.style.left = `${left}vw`;
+    heart.style.width = `${size}px`;
+    heart.style.height = `${size}px`;
+    heart.style.animationDuration = `${duration}s`;
+    heart.style.setProperty('--sway', `${sway}px`);
+    heart.style.setProperty('--rot-start', rotStart);
+    heart.style.setProperty('--rot-mid', rotMid);
+    heart.style.setProperty('--rot-end', rotEnd);
+    heart.style.setProperty('--max-opacity', maxOpacity);
+    heart.style.setProperty('--scale', scale);
+
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.onerror = () => heart.remove(); // skip gracefully if a filename isn't in the repo yet
+    heart.appendChild(img);
+
+    heartsLayer.appendChild(heart);
+
+    heart.addEventListener('animationend', () => heart.remove());
+  }
+
+  // gentle, randomly-timed stream of hearts rising up the screen
+  function scheduleNextHeart() {
+    const delay = rand(500, 1800);
+    setTimeout(() => {
+      spawnHeart();
+      scheduleNextHeart();
+    }, delay);
+  }
+
+  scheduleNextHeart();
+</script>
+
+</body>
+</html>
